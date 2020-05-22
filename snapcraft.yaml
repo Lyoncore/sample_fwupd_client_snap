@@ -1,0 +1,51 @@
+name: testfwupd
+version: 1.0
+summary: YBD
+description: |
+  TBD.
+architectures:
+- amd64
+confinement: strict
+grade: stable
+
+plugs:
+  fwupd-data:
+    content: fwupd-data
+    interface: content
+    target: $SNAP_DATA
+  fwupd-plug:
+    interface: fwupd
+    
+slots:
+  fwupd-slot:
+    interface: fwupd
+
+apps:
+  firmwareupgrade:
+    command: bin/firmware_upgrade
+    environment:
+      GI_TYPELIB_PATH: $SNAP/usr/lib/x86_64-linux-gnu/girepository-1.0/
+      G_MESSAGES_DEBUG: all
+      G_DEBUG: all
+      G_MESSAGES_PREFIXED: all
+    plugs:
+      - network
+      - fwupd-plug
+    slots:
+      - fwupd-slot
+  fwupdate:
+    command: usr/bin/fwupdate
+    plugs:
+      - fwupd-plug
+
+parts:
+  firmwareupgrade:
+    plugin: python
+    source: .
+    python-version: python3
+    stage-packages:
+      - python3-wget
+      - libgirepository1.0-dev
+      - python3-gi
+      - libfwupd1
+      - fwupdate

@@ -1,0 +1,144 @@
+#!/usr/bin/env python
+
+import gi
+import wget
+import os
+
+gi.require_version('Fwupd', '1.0')
+from gi.repository import Fwupd
+
+
+"""
+Global variables
+"""
+#lvfsURL = os.system("snap get uefi-fw-tools conf.downloaduri")
+#if lvfsURL is None:
+#    lvfsURL = "https://cdn.fwupd.org/downloads/firmware.xml.gz"
+lvfsURL = "https://cdn.fwupd.org/downloads/firmware.xml.gz"
+firmwPath = "/var/snap/uefi-fw-tools/current/cache/app-info/xmls"
+metadata = firmwPath + "/firmware.xml.gz"
+metadataSigFile = firmwPath + "/firmware.xml.gz.asc"
+logFile = os.environ['SNAP_COMMON'] + "/log/firmware_upgrade.log"
+logError = os.environ['SNAP_COMMON'] + "/log/fw.err"
+
+"""
+Error statement logging function
+"""
+def logerror(err_msg):
+    logErr = open(logError,'w',1)
+    logErr.write(err_msg)
+
+
+"""
+Initialize
+"""
+if os.path.exists(metadata):
+    os.remove(metadata)
+if os.path.exists(metadataSigFile):
+    os.remove(metadataSigFile)
+if os.path.exists(logError):
+    os.remove(logError)
+
+#need to create
+os.makedirs(os.environ['SNAP_COMMON'] + "/log", exist_ok=True)
+
+log = open(logFile, 'w', 1)
+
+try: 
+    log.write("Checking directories...\n")
+    if not os.path.exists(firmwPath):
+        os.makedirs(firmwPath)
+    log.write("Starting...\n")
+
+    """
+    Get Metadata
+    """
+    log.write("Downloading metadata...\n")
+    filename = wget.download(lvfsURL,metadata,None)
+    if filename != metadata:
+        log.write("Unable to download firmware matadata file\n")
+        logerror("Unable to download firmware matadata file\n")
+        exit(1)
+    filename = wget.download(lvfsURL + ".asc", metadataSigFile,None)
+    if filename != metadataSigFile:
+        log.write("Unable to download firmware signature file\n")
+        logerror("Unable to download firmware signature file\n")
+        exit(1)
+    log.write("Complated downloading metadata...\n")
+
+
+    log.write("Connection to Fwupd client...\n")
+    client = Fwupd.Client.new()
+    if client is None:
+        log.write("Failed to connect to Fwupd client\n")
+        logerror("Failed to connect to Fwupd client\n")
+        exit(1)
+
+    ## Refresh query into the BIOS update and query once.
+    results = client.update_metadata(metadata, metadataSigFile, None)
+    results = client.get_devices(None)
+    ## Refresh query into the BIOS 
+
+    log.write("Updating metadata ...\n")
+    results = client.update_metadata(metadata, metadataSigFile, None)
+    if results is True:
+        log.write("Updated the metadata successfully...\n")
+    else:
+        log.write("Failed to update metadata...\n")
+        logerror("Failed to update metadata\n")
+        exit(1)
+
+
+    log.write("Getting devices...\n")
+    ## This will be a Fwupd.Result object
+    results = client.get_devices(None)
+
+    scheduledFlag = None
+    for r in results:
+        log.write("*****************\n")
+        log.write("\tDevice description: " + str(r.get_device_description()) + "\n")
+        log.write("\tDevice Name: " + str(r.get_device_name()) + "\n")
+        log.write("\tDevice Id: " + str(r.get_device_id()) + "\n")
+        log.write("\tUpdate Filename: " + str(r.get_update_filename()) + "\n")
+        log.write("\tUpdate Name: " + str(r.get_update_name()) + "\n")
+        log.write("\tUpdate ID: " + str(r.get_update_id()) + "\n")
+        log.write("\tUpdate URI: " + str(r.get_update_uri()) + "\n")
+        log.write("\tUpdate version: " + str(r.get_update_version()) + "\n")
+        if r.get_update_uri() is not None:
+            downloadFile = firmwPath + "/" + "firmware_" + str(r.get_device_id()) + ".cab"
+            if os.path.exists(downloadFile):
+                os.remove(downloadFile)
+            log.write("\tDownloading " + str(r.get_update_uri()) + "\n")
+            filename = wget.download(r.get_update_uri(), downloadFile, None)
+            if filename != downloadFile:
+                log.write("ERROR: Unable to download " + str(r.get_update_uri()) + "\n")
+                logerror("Unable to download " + str(r.get_update_uri()) + "\n")
+                exit(1)
+            log.write("\tFinished downloading " + str(filename) + "\n")
+            log.write("\tAttempting to schedule offline update...\n")
+            
+            #uefiCmd = "fwupdate -a " + r.get_guid() + " " + str(filename) + " > " + "$SNAP_COMMON/log/fw.log 2>&1"
+            #log.write("\t" + uefiCmd + "\n")
+            #finalresults = os.system(uefiCmd)
+
+            finalresults = client.install(str(r.get_device_id()), str(downloadFile), Fwupd.InstallFlags.OFFLINE, None)
+            
+            if finalresults is True:
+                log.write("\tSuccessfully scheduled!\n")
+                scheduledFlag = True
+            else:
+                log.write("\tFailed to schedule firmware update\n")
+                logerror("Failed to schedule firmware update\n")
+                exit(1)
+
+        if scheduledFlag is None:
+            log.write("No devices can be updated: Nothing to do\n")
+            logerror("No devices can be updated: Nothing to do\n")
+            exit(1)
+
+        exit(0)
+
+except Exception as e:
+    log.write("Exception caught : " + str(e) + "\n")
+    logerror("Unknown error: cannot check or update firmware\n")
+    exit(1)
