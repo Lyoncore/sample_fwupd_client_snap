@@ -1,11 +1,13 @@
-name: testfwupd
-version: 1.0
-summary: YBD
+name: test-fwupd-sample
+version: '1.0'
+summary: A sample snap to install newer firmware updates over fwupd
 description: |
-  TBD.
+  This snap gives a sample to demostrate how the client updates
+  firmware through fwupd for reference implementation.
 architectures:
 - amd64
 confinement: strict
+base: core18
 grade: stable
 
 plugs:
@@ -33,10 +35,6 @@ apps:
       - fwupd-plug
     slots:
       - fwupd-slot
-  fwupdate:
-    command: usr/bin/fwupdate
-    plugs:
-      - fwupd-plug
 
 parts:
   firmwareupgrade:
@@ -47,5 +45,4 @@ parts:
       - python3-wget
       - libgirepository1.0-dev
       - python3-gi
-      - libfwupd1
-      - fwupdate
+      - gir1.2-fwupd-2.0
